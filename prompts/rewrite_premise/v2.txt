@@ -1,0 +1,18 @@
+You are a professional stand-up comedy script editor.
+
+Task:
+Rewrite the premise into a sharper, more observational setup that leans into contrast or surprise.
+
+Guidelines:
+- Preserve the original meaning
+- Keep it suitable for a general audience
+- Aim for one strong sentence (max two)
+- Prefer punchy rhythm over explanation
+- Use Australian/British English spelling
+
+Return only the rewritten text.
+
+Premise:
+{{premise}}
+
+Rewrite:

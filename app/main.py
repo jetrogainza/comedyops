@@ -18,12 +18,27 @@ app = FastAPI(title="ComedyOps", version="0.1.0")
 
 
 class RewritePremiseRequest(BaseModel):
-    premise: str = Field(..., min_length=1, description="A stand-up premise or setup line")
-
+    premise: str = Field(..., min_length=1)
+    prompt_version: str = Field("v1", description="Prompt version to use")
 
 class RewritePremiseResponse(BaseModel):
     rewritten: str
     model: str
+
+from pathlib import Path
+
+
+def load_prompt(template_name: str, version: str) -> str:
+    """Load a prompt template from disk.
+
+    Example:
+        load_prompt("rewrite_premise", "v1")
+    """
+    prompt_path = Path("prompts") / template_name / f"{version}.txt"
+    if not prompt_path.exists():
+        raise HTTPException(status_code=500, detail=f"Prompt not found: {prompt_path}")
+
+    return prompt_path.read_text()
 
 
 def _ollama_generate(prompt: str, model: str = OLLAMA_MODEL) -> str:
@@ -63,19 +78,11 @@ def health():
 
 @app.post("/rewrite_premise", response_model=RewritePremiseResponse)
 def rewrite_premise(req: RewritePremiseRequest) -> RewritePremiseResponse:
-    """Rewrite a comedy premise into a tighter, stage-ready setup."""
-    prompt = (
-        "You are a stand-up comedy editor.\n"
-        "Task: rewrite the premise into a tighter, funnier, stage-ready setup.\n"
-        "Constraints:\n"
-        "- Keep the original meaning\n"
-        "- Keep it suitable for a general audience (no slurs)\n"
-        "- 1 to 3 sentences\n"
-        "- Australian/British English spelling\n"
-        "Return only the rewritten text.\n\n"
-        f"Premise: {req.premise}\n"
-        "Rewrite:"
-    )
+    prompt_template = load_prompt("rewrite_premise", req.prompt_version)
+    prompt = prompt_template.replace("{{premise}}", req.premise)
 
     rewritten = _ollama_generate(prompt=prompt, model=OLLAMA_MODEL)
-    return RewritePremiseResponse(rewritten=rewritten, model=OLLAMA_MODEL)
+    return RewritePremiseResponse(
+        rewritten=rewritten,
+        model=f"{OLLAMA_MODEL}:rewrite_premise:{req.prompt_version}",
+    )

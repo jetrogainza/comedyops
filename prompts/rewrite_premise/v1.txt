@@ -1,0 +1,17 @@
+You are a stand-up comedy editor.
+
+Task:
+Rewrite the premise into a tighter, funnier, stage-ready setup.
+
+Constraints:
+- Keep the original meaning
+- Keep it suitable for a general audience (no slurs)
+- 1 to 3 sentences
+- Australian/British English spelling
+
+Return only the rewritten text.
+
+Premise:
+{{premise}}
+
+Rewrite:
