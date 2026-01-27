@@ -15,7 +15,9 @@ def test_health():
 
 def test_rewrite_premise_returns_shape():
     # We mock Ollama so the test doesn't rely on your local model running.
-    with patch("app.main._ollama_generate", return_value="A tighter rewritten premise."):
+    fake_model_output = '{"action": "final", "text": "A tighter rewritten premise."}'
+
+    with patch("app.main._ollama_generate", return_value=fake_model_output):
         r = client.post("/rewrite_premise", json={"premise": "I moved to Australia and everyone calls me mate."})
 
     assert r.status_code == 200

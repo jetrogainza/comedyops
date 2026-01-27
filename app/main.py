@@ -1,13 +1,6 @@
 from __future__ import annotations
 
-"""ComedyOps API (FastAPI)
-
-This file is the entry point for your service.
-- FastAPI turns normal Python functions into HTTP endpoints.
-- We call Ollama (running locally) to generate text.
-- We run a tiny "agent loop": generate several candidates, score them, pick the best.
-"""
-
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -16,127 +9,63 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-# -----------------------------
-# Configuration (via env vars)
-# -----------------------------
-# Environment variables let you change behaviour without editing code.
-# This is handy for:
-# - switching models
-# - pointing to another Ollama host
-# - tweaking generation params
-#
-# If the env var isn't set, we fall back to a default.
+# Env vars let us switch model/host without changing code.
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 
-# Temperature controls randomness:
-# - lower = more deterministic / conservative
-# - higher = more varied / creative
 DEFAULT_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.7"))
-
-# HTTP timeout so requests don't hang forever if something is wrong.
 REQUEST_TIMEOUT_S = float(os.getenv("OLLAMA_TIMEOUT_S", "60"))
 
-# Create the FastAPI "app" object.
-# Uvicorn runs this object to serve HTTP requests.
 app = FastAPI(title="ComedyOps", version="0.1.0")
 
 
-# ---------------------------------
-# Request/Response schemas (Pydantic)
-# ---------------------------------
-# Pydantic models define the shape of JSON coming in (request) and going out (response).
-# FastAPI uses these to:
-# - validate inputs automatically
-# - generate API docs automatically (Swagger/OpenAPI)
-
 class RewritePremiseRequest(BaseModel):
-    # "premise" must be a non-empty string (min_length=1)
-    premise: str = Field(..., min_length=1, description="A stand-up premise/setup line")
-
-    # Default prompt version is v1, but clients can request v2, v3, etc.
-    prompt_version: str = Field("v1", description="Prompt version to use (e.g., v1, v2)")
+    premise: str = Field(..., min_length=1)
+    prompt_version: str = Field("v1", description="Prompt version to use")
 
 
 class RewritePremiseResponse(BaseModel):
-    # The rewritten result we want the client to use.
     rewritten: str
-
-    # Provenance string (model + prompt version + agent version)
     model: str
 
 
-# -----------------------------
-# Prompt loading (versioned files)
-# -----------------------------
-
 def load_prompt(template_name: str, version: str) -> str:
-    """Load a prompt template from disk.
+    """Load a prompt template from disk."""
 
-    Example:
-        load_prompt("rewrite_premise", "v1")
-
-    Why this exists:
-    - Prompts change often.
-    - Keeping them in files makes changes easy to review, version, and roll back.
-    """
-
-    # Build a path like: prompts/rewrite_premise/v1.txt
     prompt_path = Path("prompts") / template_name / f"{version}.txt"
-
     if not prompt_path.exists():
-        # HTTPException is a FastAPI-friendly way to return an error response.
-        # status_code=500 means "server misconfigured" (missing file on disk).
         raise HTTPException(status_code=500, detail=f"Prompt not found: {prompt_path}")
 
-    # Read the entire template as a string.
     return prompt_path.read_text(encoding="utf-8")
 
 
-# -----------------------------
-# Ollama client (HTTP call)
-# -----------------------------
-
 def _ollama_generate(prompt: str, model: str = OLLAMA_MODEL) -> str:
-    """Call Ollama's HTTP API and return the generated text.
+    """Calls Ollama's HTTP API and returns only the generated text."""
 
-    We keep this as a simple synchronous HTTP request for now.
-    (Later we can make it async and/or stream tokens.)
-    """
-
-    # Ensure we don't get double slashes if OLLAMA_HOST ends with "/".
     url = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
 
-    # Payload matches Ollama's API schema.
     payload: dict[str, Any] = {
         "model": model,
         "prompt": prompt,
-        "stream": False,  # False means "return the full answer as one JSON response"
-        "options": {
-            "temperature": DEFAULT_TEMPERATURE,
-        },
+        "stream": False,
+        "options": {"temperature": DEFAULT_TEMPERATURE},
     }
 
     try:
-        # Make the HTTP request to Ollama.
         resp = httpx.post(url, json=payload, timeout=REQUEST_TIMEOUT_S)
     except httpx.RequestError as e:
-        # This happens if Ollama isn't running or the host is unreachable.
         raise HTTPException(
-            status_code=503,  # 503 = "service unavailable"
+            status_code=503,
             detail=f"Could not reach Ollama at {OLLAMA_HOST}. Is Ollama running? Error: {e}",
         )
 
-    # If Ollama returns a non-200 response, we forward it as a "bad gateway".
     if resp.status_code != 200:
         raise HTTPException(
-            status_code=502,  # 502 = "upstream service failed"
+            status_code=502,
             detail=f"Ollama returned HTTP {resp.status_code}: {resp.text}",
         )
 
     data = resp.json()
-
-    # Ollama returns the generated text in the "response" field.
     text = (data.get("response") or "").strip()
     if not text:
         raise HTTPException(status_code=502, detail="Ollama returned an empty response")
@@ -145,98 +74,125 @@ def _ollama_generate(prompt: str, model: str = OLLAMA_MODEL) -> str:
 
 
 # -----------------------------
-# A tiny "tool": scoring function
+# Tool schemas (JSON-based)
 # -----------------------------
+# The model is only allowed to request ONE of these actions.
+# Our code validates and executes them.
+
+ALLOWED_TOOLS = {"rewrite", "score", "final"}
+
+
+def parse_action(json_text: str) -> dict:
+    """Parse and validate a model-proposed action.
+
+    Expected schema:
+    {
+      "action": "rewrite" | "score" | "final",
+      "text": "..."
+    }
+    """
+
+    try:
+        data = json.loads(json_text)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Invalid JSON from model: {e}")
+
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=502, detail="Model action must be a JSON object")
+
+    action = data.get("action")
+    text = data.get("text")
+
+    if action not in ALLOWED_TOOLS:
+        raise HTTPException(status_code=502, detail=f"Disallowed action: {action}")
+
+    if not isinstance(text, str) or not text.strip():
+        raise HTTPException(status_code=502, detail="Action 'text' must be a non-empty string")
+
+    return {"action": action, "text": text}
+
 
 def score_joke(text: str) -> int:
-    """A tiny heuristic scorer.
+    """Very naive heuristic scorer.
 
-    Why this is a "tool":
-    - deterministic (same input => same score)
-    - fast
-    - testable
-
-    It gives the agent loop a way to choose between candidates.
+    Higher score = better.
+    This is intentionally simple and replaceable.
     """
 
     score = 0
 
-    # Heuristic 1: shorter often feels punchier.
+    # Shorter tends to be punchier
     if len(text) < 180:
         score += 1
 
-    # Heuristic 2: contrast words can help create comedic turns.
+    # Presence of contrast words often helps comedy
     contrast_words = ["but", "however", "suddenly", "until"]
     if any(w in text.lower() for w in contrast_words):
         score += 1
 
-    # Heuristic 3: quotes sometimes indicate a punch/observation.
+    # Quotes often signal a punch or observation
     if "'" in text or '"' in text:
         score += 1
 
     return score
 
 
-# ---------------------------------
-# HTTP endpoints (FastAPI decorators)
-# ---------------------------------
-# The @app.get / @app.post lines are called "decorators".
-# They "wrap" the function below and register it as an HTTP route.
-#
-# Example:
-#   @app.get("/health")
-# means:
-#   "When a GET request hits /health, call the function named health()"
-
-
 @app.get("/health")
 def health():
-    """Health endpoint.
-
-    Used by humans, CI checks, Docker healthchecks, and monitoring.
-    It's intentionally simple: if the server is up, return OK.
-    """
-
     return {"status": "ok"}
 
 
 @app.post("/rewrite_premise", response_model=RewritePremiseResponse)
 def rewrite_premise(req: RewritePremiseRequest) -> RewritePremiseResponse:
-    """Rewrite a premise using an agent loop.
+    # Agent loop configuration
+    MAX_STEPS = 5
 
-    What happens here:
-    1) Load a versioned prompt template from disk.
-    2) Fill the {{premise}} placeholder.
-    3) Generate multiple candidate rewrites using Ollama.
-    4) Score candidates with a deterministic tool.
-    5) Return the best candidate.
-
-    FastAPI detail:
-    - Because `req` is a Pydantic model, FastAPI will parse the incoming JSON into it.
-    - `response_model=RewritePremiseResponse` means FastAPI validates/serialises output too.
-    """
-
-    # 1) Load the prompt template (v1/v2/...).
     prompt_template = load_prompt("rewrite_premise", req.prompt_version)
+    base_prompt = prompt_template.replace("{{premise}}", req.premise)
 
-    # 2) Fill in the placeholder.
-    prompt = prompt_template.replace("{{premise}}", req.premise)
+    system_instructions = (
+        "You are an agent that must respond ONLY in JSON.\n"
+        "Choose exactly one action per step from: rewrite, score, final.\n"
+        "Schema: {\"action\": <action>, \"text\": <string>}\n"
+        "Rules:\n"
+        "- rewrite: propose a rewritten premise\n"
+        "- score: request scoring of the provided text\n"
+        "- final: provide the final chosen rewrite and stop\n"
+        "Do not include any other text outside JSON."
+    )
 
-    # 3) Generate candidates.
-    candidates: list[str] = []
-    for _ in range(5):
-        text = _ollama_generate(prompt=prompt, model=OLLAMA_MODEL)
-        candidates.append(text)
+    state = {"best_text": "", "best_score": -1}
 
-    # 4) Score and pick the best.
-    scored = [(c, score_joke(c)) for c in candidates]
-    best_text, best_score = max(scored, key=lambda x: x[1])
+    for _ in range(MAX_STEPS):
+        agent_prompt = (
+            f"{system_instructions}\n\n"
+            f"Premise prompt:\n{base_prompt}\n\n"
+            f"Current best score: {state['best_score']}\n"
+            f"Current best text: {state['best_text']}\n"
+            "Next action:"
+        )
 
-    # (best_score is currently unused in the response, but you might log it later.)
-    _ = best_score
+        raw = _ollama_generate(prompt=agent_prompt, model=OLLAMA_MODEL)
+        action = parse_action(raw)
 
-    # 5) Return a structured response.
+        if action["action"] in {"rewrite", "score"}:
+            candidate = action["text"]
+            score = score_joke(candidate)
+            if score > state["best_score"]:
+                state["best_score"] = score
+                state["best_text"] = candidate
+
+        elif action["action"] == "final":
+            return RewritePremiseResponse(
+                rewritten=action["text"],
+                model=f"{OLLAMA_MODEL}:rewrite_premise:{req.prompt_version}:agent_v2",
+            )
+
+    # Fallback if agent never calls 'final'
+    if not state["best_text"]:
+        raise HTTPException(status_code=502, detail="Agent failed to produce a final result")
+
     return RewritePremiseResponse(
-        rewritten=best_text,
-        model=f"{OLLAMA_MODEL}:rewrite_premise:{req.prompt_version}:agent_v1",
+        rewritten=state["best_text"],
+        model=f"{OLLAMA_MODEL}:rewrite_premise:{req.prompt_version}:agent_v2",
     )
