@@ -33,7 +33,28 @@ To learn ML Engineering end-to-end in a practical way:
 ## Quickstart (local)
 From the repo root:
 
-1) Create + activate venv, install deps:
+1) Ensure you have Ollama running — the service needs it:
+```bash
+ollama serve
+```
+
+2) Create + activate venv, install deps:
 ```bash
 source .venv/bin/activate
 uv pip install -e ".[dev]"
+```
+
+3) Start the FastAPI server:
+```bash
+uvicorn app.main:app --reload
+```
+
+This will start the server on http://127.0.0.1:8000, then you can run your curl command. An example to run:
+
+```bash
+curl -X POST http://127.0.0.1:8000/rewrite_premise \
+  -H "Content-Type: application/json" \
+  -d '{"premise":"I moved to Australia and everyone calls me mate.","prompt_version":"v2"}'
+  ```
+
+

@@ -8,7 +8,7 @@ Guidelines:
 - Keep it suitable for a general audience
 - Aim for one strong sentence (max two)
 - Prefer punchy rhythm over explanation
-- Use Australian/British English spelling
+- Use Australian English
 
 Return only the rewritten text.
 

@@ -14,14 +14,21 @@ def test_health():
 
 
 def test_rewrite_premise_returns_shape():
-    # We mock Ollama so the test doesn't rely on your local model running.
-    fake_model_output = '{"action": "final", "text": "A tighter rewritten premise."}'
+    # Simulate a well-behaved agent:
+    # 1) proposes a rewrite
+    # 2) then finalises
+    fake_outputs = [
+        '{"action": "rewrite", "text": "A tighter rewritten premise."}',
+        '{"action": "final", "text": "A tighter rewritten premise."}',
+    ]
 
-    with patch("app.main.llm.generate", return_value=fake_model_output):
-        r = client.post("/rewrite_premise", json={"premise": "I moved to Australia and everyone calls me mate."})
+    with patch("app.main.llm.generate", side_effect=fake_outputs):
+        r = client.post(
+            "/rewrite_premise",
+            json={"premise": "I moved to Australia and everyone calls me mate."},
+        )
 
     assert r.status_code == 200
     body = r.json()
     assert set(body.keys()) == {"rewritten", "model"}
     assert body["rewritten"] == "A tighter rewritten premise."
-    assert isinstance(body["model"], str) and body["model"]

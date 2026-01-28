@@ -165,7 +165,11 @@ def rewrite_premise(req: RewritePremiseRequest) -> RewritePremiseResponse:
         "Do not include any other text outside JSON."
     )
 
-    state = {"best_text": "", "best_score": -1}
+    state = {
+        "best_text": "",
+        "best_score": -1,
+        "has_candidate": False,
+    }
 
     for _ in range(MAX_STEPS):
         agent_prompt = (
@@ -182,11 +186,24 @@ def rewrite_premise(req: RewritePremiseRequest) -> RewritePremiseResponse:
         if action["action"] in {"rewrite", "score"}:
             candidate = action["text"]
             score = score_joke(candidate)
+            state["has_candidate"] = True
             if score > state["best_score"]:
                 state["best_score"] = score
                 state["best_text"] = candidate
 
         elif action["action"] == "final":
+            if not state["has_candidate"]:
+                # Ignore premature final and continue the loop
+                continue
+
+            print(
+                {
+                    "provider": os.getenv("LLM_PROVIDER", "ollama"),
+                    "prompt_version": req.prompt_version,
+                    "best_score": state["best_score"],
+                }
+            )
+            
             return RewritePremiseResponse(
                 rewritten=action["text"],
                 model=f"{OLLAMA_MODEL}:rewrite_premise:{req.prompt_version}:agent_v2",
@@ -195,6 +212,14 @@ def rewrite_premise(req: RewritePremiseRequest) -> RewritePremiseResponse:
     # Fallback if agent never calls 'final'
     if not state["best_text"]:
         raise HTTPException(status_code=502, detail="Agent failed to produce a final result")
+    
+    print(
+        {
+            "provider": os.getenv("LLM_PROVIDER", "ollama"),
+            "prompt_version": req.prompt_version,
+            "best_score": state["best_score"],
+        }
+    )
 
     return RewritePremiseResponse(
         rewritten=state["best_text"],
