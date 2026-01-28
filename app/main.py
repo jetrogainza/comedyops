@@ -9,6 +9,10 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from app.llm_factory import get_llm
+
+llm = get_llm()
+
 # Env vars let us switch model/host without changing code.
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
@@ -172,7 +176,7 @@ def rewrite_premise(req: RewritePremiseRequest) -> RewritePremiseResponse:
             "Next action:"
         )
 
-        raw = _ollama_generate(prompt=agent_prompt, model=OLLAMA_MODEL)
+        raw = llm.generate(agent_prompt)
         action = parse_action(raw)
 
         if action["action"] in {"rewrite", "score"}:
