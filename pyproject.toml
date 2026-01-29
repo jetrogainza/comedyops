@@ -12,6 +12,8 @@ dependencies = [
   "fastapi>=0.110",
   "uvicorn[standard]>=0.27",
   "httpx>=0.27",
+  "pydantic",
+  "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]

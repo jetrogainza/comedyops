@@ -57,4 +57,14 @@ curl -X POST http://127.0.0.1:8000/rewrite_premise \
   -d '{"premise":"I moved to Australia and everyone calls me mate.","prompt_version":"v2"}'
   ```
 
+  ## EDIT:
+  Now that we are usng Docker, this is the command to spin up the container:
+  ```bash
+  docker run --rm \
+  -p 8000:8000 \
+  -e LLM_PROVIDER=ollama \
+  -e OLLAMA_HOST=http://host.docker.internal:11434 \
+  comedyops:latest
+  ```
+
 
