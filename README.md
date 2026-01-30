@@ -1,70 +1,242 @@
 # ComedyOps 🎭🤖
 
-A hands-on ML engineering project that builds a local LLM-powered service for stand-up writing workflows.
-Runs fully on your machine using Ollama (no paid cloud required).
+A hands-on ML engineering project that builds a **local LLM-powered service** for stand-up writing workflows.
+
+Runs **fully on your machine** using Ollama (no paid cloud, no API keys), and is designed to practise **real ML engineering**, not just notebooks.
+
+---
 
 ## What it does (current)
-- `POST /rewrite_premise`: rewrites a comedy premise into a tighter, stage-ready setup using a local model via Ollama.
-- `GET /health`: basic service health check.
+- `POST /rewrite_premise`  
+  Rewrites a comedy premise into a tighter, stage-ready setup using a **local LLM via Ollama**.
+- `GET /health`  
+  Basic service health check.
+
+---
 
 ## Why this project exists
-To learn ML Engineering end-to-end in a practical way:
+
+ComedyOps exists to practise **ML Engineering end-to-end**, not model theory:
+
 - API deployment patterns (FastAPI)
-- containerisation (Docker)
+- Containerisation (Docker)
+- Local LLM integration (Ollama)
+- Dependency & environment management (uv + pyproject.toml)
 - CI (GitHub Actions)
-- testing discipline (pytest)
-- LLM integration + prompt/version management (coming next)
-- monitoring + evaluation (coming next)
+- Testing discipline (pytest)
+- Prompt/version management (coming next)
+- Monitoring + evaluation (coming next)
+
+This is intentionally **hands-on and slightly painful**, like real work.
+
+---
 
 ## Tech stack
+
 - Python 3.11
 - FastAPI + Uvicorn
 - Ollama (local model runtime)
 - httpx (HTTP calls to Ollama)
+- Docker + Docker Compose
+- uv (Python env + dependency manager)
 - pytest (tests)
 - ruff (linting)
 
-## Prerequisites
-- Python 3.11
-- Ollama installed and running
-- A local model pulled, e.g.:
-  - `ollama pull llama3.2:3b`
+---
 
-## Quickstart (local)
-From the repo root:
+## 🧠 Mental model (READ THIS EVERY TIME)
 
-1) Ensure you have Ollama running — the service needs it:
+You are dealing with **layers**.  
+Never mix responsibilities between them.
+
+### 1️⃣ System tools (installed once)
+- **Homebrew** → installs system-level tools
+- **Docker Desktop** → runs containers
+- **Ollama** → runs local LLMs
+- **uv** → Python environments & dependencies
+
+⬇️
+
+### 2️⃣ Python environment (per project)
+- `.venv/` created by `uv`
+- Dependencies defined in **`pyproject.toml`**
+- Installed via `uv pip install -e ".[dev]"`
+
+⬇️
+
+### 3️⃣ Application runtime
+- FastAPI app
+- Runs either:
+  - directly via `uvicorn`
+  - or inside Docker via `docker compose`
+
+**Rules of thumb**
+- ❌ Don’t invent `requirements.txt`
+- ❌ Don’t mix `pip install` and `uv`
+- ❌ Don’t install Python libs with `brew`
+- ✅ `brew` installs tools
+- ✅ `uv` installs Python deps
+- ✅ `pyproject.toml` is the single source of truth
+
+---
+
+## Prerequisites (fresh machine friendly)
+
+### 0️⃣ Git
+```bash
+git --version
+```
+
+---
+
+### 1️⃣ Install Homebrew (macOS)
+
+```bash
+brew --version
+```
+
+If not installed:
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+On Apple Silicon:
+```bash
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
+```
+
+Verify:
+```bash
+brew --version
+```
+
+---
+
+### 2️⃣ Install uv
+
+```bash
+brew install uv
+uv --version
+```
+
+---
+
+### 3️⃣ Install Docker Desktop (REQUIRED)
+
+Docker is needed to run the API in containers and simulate production.
+
+Install:
+https://www.docker.com/products/docker-desktop/
+
+Verify:
+```bash
+docker --version
+docker compose version
+```
+
+---
+
+### 4️⃣ Install Ollama (local LLM runtime)
+
+Install:
+https://ollama.com
+
+Verify:
+```bash
+ollama --version
+```
+
+Start Ollama:
 ```bash
 ollama serve
 ```
 
-2) Create + activate venv, install deps:
+Pull a model:
+```bash
+ollama pull llama3.2:3b
+```
+
+---
+
+## Project setup
+
+### 1️⃣ Clone the repository
+
+```bash
+git clone https://github.com/<your-username>/comedyops.git
+cd comedyops
+```
+
+---
+
+### 2️⃣ Create the virtual environment
+
+```bash
+uv venv
+```
+
+---
+
+### 3️⃣ Activate it
+
 ```bash
 source .venv/bin/activate
+```
+
+---
+
+### 4️⃣ Install dependencies
+
+```bash
 uv pip install -e ".[dev]"
 ```
 
-3) Start the FastAPI server:
+---
+
+### 5️⃣ Sanity checks
+
 ```bash
+which python
+python --version
+```
+
+---
+
+## Run locally (no Docker)
+
+```bash
+ollama serve
 uvicorn app.main:app --reload
 ```
 
-This will start the server on http://127.0.0.1:8000, then you can run your curl command. An example to run:
-
+Test:
 ```bash
 curl -X POST http://127.0.0.1:8000/rewrite_premise \
   -H "Content-Type: application/json" \
   -d '{"premise":"I moved to Australia and everyone calls me mate.","prompt_version":"v2"}'
-  ```
+```
 
-  ## EDIT:
-  Now that we are usng Docker, this is the command to spin up the container:
-  ```bash
-  docker run --rm \
+---
+
+## Run with Docker (recommended)
+
+```bash
+docker compose up --build
+```
+
+Or manually:
+```bash
+docker run --rm \
   -p 8000:8000 \
   -e LLM_PROVIDER=ollama \
   -e OLLAMA_HOST=http://host.docker.internal:11434 \
   comedyops:latest
-  ```
+```
 
+---
 
+## Final reminder
+
+This repo is a **learning system**, not a polished product.
+Breakage is expected. Debugging is the skill.
