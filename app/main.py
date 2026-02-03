@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from app.llm_factory import get_llm
-from app.eval_logger import log_generation
+from app.eval_logger import log_generation, log_feedback
 
 llm = get_llm()
 
@@ -40,6 +40,7 @@ class RewritePremiseRequest(BaseModel):
 class RewritePremiseResponse(BaseModel):
     rewritten: str
     model: str
+    run_id: str
 
 class RewritePersonaRequest(BaseModel):
     premise: str = Field(..., min_length=1)
@@ -51,6 +52,17 @@ class RewritePersonaResponse(BaseModel):
     rewritten: str
     persona: str
     model: str
+    run_id: str
+
+class FeedbackRequest(BaseModel):
+    run_id: str = Field(..., min_length=8)
+    human_rating: int = Field(..., ge=1, le=5, description="1=bad, 5=great")
+    would_use_on_stage: bool = Field(False)
+    notes: str | None = Field(None, description="Optional notes (why it worked / didn’t)")
+
+
+class FeedbackResponse(BaseModel):
+    status: str
 
 def load_prompt(template_name: str, version: str) -> str:
     """Load a prompt template from disk."""
@@ -223,8 +235,9 @@ def rewrite_premise(req: RewritePremiseRequest) -> RewritePremiseResponse:
                 }
             )
 
-            log_generation(
+            run_id = log_generation(
                 {
+                    "task": "rewrite_premise",
                     "premise": req.premise,
                     "prompt_version": req.prompt_version,
                     "model_provider": LLM_PROVIDER,
@@ -233,10 +246,11 @@ def rewrite_premise(req: RewritePremiseRequest) -> RewritePremiseResponse:
                     "chosen_score": state["best_score"],
                 }
             )
-            
+
             return RewritePremiseResponse(
                 rewritten=action["text"],
                 model=f"{_reported_model_name()}:rewrite_premise:{req.prompt_version}:agent_v2",
+                run_id=run_id,
             )
 
     # Fallback if agent never calls 'final'
@@ -251,8 +265,9 @@ def rewrite_premise(req: RewritePremiseRequest) -> RewritePremiseResponse:
         }
     )
 
-    log_generation(
+    run_id = log_generation(
         {
+            "task": "rewrite_premise",
             "premise": req.premise,
             "prompt_version": req.prompt_version,
             "model_provider": LLM_PROVIDER,
@@ -263,8 +278,9 @@ def rewrite_premise(req: RewritePremiseRequest) -> RewritePremiseResponse:
     )
 
     return RewritePremiseResponse(
-        rewritten=state["best_text"],
+        rewritten=action["text"],
         model=f"{_reported_model_name()}:rewrite_premise:{req.prompt_version}:agent_v2",
+        run_id=run_id,
     )
 
 @app.post("/rewrite_persona", response_model=RewritePersonaResponse)
@@ -370,7 +386,7 @@ def rewrite_persona(req: RewritePersonaRequest) -> RewritePersonaResponse:
 
             chosen = state["best_text"] or state["latest_text"] or text.strip()
 
-            log_generation(
+            run_id = log_generation(
                 {
                     "task": "rewrite_persona",
                     "premise": req.premise,
@@ -387,13 +403,14 @@ def rewrite_persona(req: RewritePersonaRequest) -> RewritePersonaResponse:
                 rewritten=chosen,
                 persona=req.persona,
                 model=f"{_reported_model_name()}:rewrite_persona:{req.prompt_version}:agent_v1",
+                run_id=run_id,
             )
 
     # Fallback: if no explicit final, return best we got.
     if not state["best_text"]:
         raise HTTPException(status_code=502, detail="Agent failed to produce a result")
 
-    log_generation(
+    run_id = log_generation(
         {
             "task": "rewrite_persona",
             "premise": req.premise,
@@ -410,4 +427,19 @@ def rewrite_persona(req: RewritePersonaRequest) -> RewritePersonaResponse:
         rewritten=state["best_text"],
         persona=req.persona,
         model=f"{_reported_model_name()}:rewrite_persona:{req.prompt_version}:agent_v1",
+        run_id=run_id,
     )
+
+@app.post("/feedback", response_model=FeedbackResponse)
+def submit_feedback(req: FeedbackRequest) -> FeedbackResponse:
+    # Store feedback in a separate append-only file.
+    log_feedback(
+        {
+            "run_id": req.run_id,
+            "human_rating": req.human_rating,
+            "would_use_on_stage": req.would_use_on_stage,
+            "notes": req.notes,
+        }
+    )
+
+    return FeedbackResponse(status="ok")
