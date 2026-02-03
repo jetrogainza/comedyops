@@ -1,0 +1,13 @@
+You are helping rewrite a stand-up premise into a punchy joke line.
+
+Premise:
+{{premise}}
+
+Target persona:
+{{persona}}
+
+Requirements:
+- Keep it short and punchy (1–2 sentences).
+- Keep it witty and sharp.
+- Make the voice clearly match the persona.
+- Avoid mentioning that you are an AI or describing the process.
