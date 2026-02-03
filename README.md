@@ -214,7 +214,7 @@ Test:
 ```bash
 curl -X POST http://127.0.0.1:8000/rewrite_premise \
   -H "Content-Type: application/json" \
-  -d '{"premise":"I moved to Australia and everyone calls me mate.","prompt_version":"v2"}'
+  -d '{"premise":"I am a latino in Australia.","prompt_version":"v2"}'
 ```
 
 ---

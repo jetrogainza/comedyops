@@ -4,7 +4,7 @@ from app.llm import LLM
 
 
 def get_llm() -> LLM:
-    provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
 
     if provider == "ollama":
         from app.providers.ollama import OllamaLLM

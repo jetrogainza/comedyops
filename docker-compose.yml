@@ -1,10 +1,22 @@
-version: "3.9"
-
 services:
   api:
     build: .
     ports:
       - "8000:8000"
     environment:
-      LLM_PROVIDER: ollama
-      OLLAMA_HOST: http://host.docker.internal:11434
+      LLM_PROVIDER: ${LLM_PROVIDER}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL}
+      OLLAMA_HOST: http://ollama:11434
+    volumes:
+      - ./eval_logs:/app/eval_logs
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  ollama_data:

@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from app.llm_factory import get_llm
+from app.eval_logger import log_generation
 
 llm = get_llm()
 
@@ -19,8 +20,16 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 
 DEFAULT_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.7"))
 REQUEST_TIMEOUT_S = float(os.getenv("OLLAMA_TIMEOUT_S", "60"))
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 
 app = FastAPI(title="ComedyOps", version="0.1.0")
+
+
+def _reported_model_name() -> str:
+    if LLM_PROVIDER == "openai":
+        return OPENAI_MODEL
+    return OLLAMA_MODEL
 
 
 class RewritePremiseRequest(BaseModel):
@@ -198,15 +207,26 @@ def rewrite_premise(req: RewritePremiseRequest) -> RewritePremiseResponse:
 
             print(
                 {
-                    "provider": os.getenv("LLM_PROVIDER", "ollama"),
+                    "provider": LLM_PROVIDER,
                     "prompt_version": req.prompt_version,
                     "best_score": state["best_score"],
+                }
+            )
+
+            log_generation(
+                {
+                    "premise": req.premise,
+                    "prompt_version": req.prompt_version,
+                    "model_provider": LLM_PROVIDER,
+                    "model_name": _reported_model_name(),
+                    "chosen_text": action["text"],
+                    "chosen_score": state["best_score"],
                 }
             )
             
             return RewritePremiseResponse(
                 rewritten=action["text"],
-                model=f"{OLLAMA_MODEL}:rewrite_premise:{req.prompt_version}:agent_v2",
+                model=f"{_reported_model_name()}:rewrite_premise:{req.prompt_version}:agent_v2",
             )
 
     # Fallback if agent never calls 'final'
@@ -215,13 +235,24 @@ def rewrite_premise(req: RewritePremiseRequest) -> RewritePremiseResponse:
     
     print(
         {
-            "provider": os.getenv("LLM_PROVIDER", "ollama"),
+            "provider": LLM_PROVIDER,
             "prompt_version": req.prompt_version,
             "best_score": state["best_score"],
         }
     )
 
+    log_generation(
+        {
+            "premise": req.premise,
+            "prompt_version": req.prompt_version,
+            "model_provider": LLM_PROVIDER,
+            "model_name": _reported_model_name(),
+            "chosen_text": action["text"],
+            "chosen_score": state["best_score"],
+        }
+    )
+
     return RewritePremiseResponse(
         rewritten=state["best_text"],
-        model=f"{OLLAMA_MODEL}:rewrite_premise:{req.prompt_version}:agent_v2",
+        model=f"{_reported_model_name()}:rewrite_premise:{req.prompt_version}:agent_v2",
     )
