@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ComedyOps</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+
+  <body>
+    <div class="app">
+      <header class="header">
+        <div class="brand">
+          <div class="logo">CO</div>
+          <div>
+            <h1>ComedyOps</h1>
+            <p class="sub">Generate rewrites via <code>/goal</code>, then send feedback via <code>/feedback</code>.</p>
+          </div>
+        </div>
+        <div class="status" id="apiStatus">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="text">Checking API…</span>
+        </div>
+      </header>
+
+      <main class="grid">
+        <!-- Left: Input -->
+        <section class="card">
+          <h2>1) What’s the joke / goal?</h2>
+
+          <label class="label" for="premise">Joke / premise</label>
+          <textarea
+            id="premise"
+            class="textarea"
+            placeholder="e.g. I’m a Latino in Australia…"
+            rows="8"
+          ></textarea>
+
+          <div class="row">
+            <div class="field">
+              <label class="label" for="persona">Persona (optional)</label>
+              <input
+                id="persona"
+                class="input"
+                placeholder="e.g. deadpan British insult comic"
+                type="text"
+              />
+              <p class="hint">
+                If you fill this in, the UI will automatically phrase the goal like:
+                <code>Rewrite this joke as a &lt;persona&gt;: &lt;joke&gt;</code>
+              </p>
+            </div>
+          </div>
+
+          <div class="row">
+            <button id="generateBtn" class="btn primary">
+              Generate
+            </button>
+            <button id="clearBtn" class="btn ghost" type="button">
+              Clear
+            </button>
+          </div>
+
+          <div class="smallprint">
+            Tip: Keep the input short. Your backend agents already iterate a few times.
+          </div>
+        </section>
+
+        <!-- Right: Output + Feedback -->
+        <section class="card">
+          <h2>2) Output</h2>
+
+          <div class="output" id="outputBox">
+            <div class="placeholder">
+              Your rewrite will appear here.
+            </div>
+          </div>
+
+          <div class="meta" id="metaBox" hidden>
+            <div><span class="k">Task</span> <span class="v" id="metaTask"></span></div>
+            <div><span class="k">Model</span> <span class="v" id="metaModel"></span></div>
+            <div><span class="k">Persona</span> <span class="v" id="metaPersona"></span></div>
+          </div>
+
+          <hr class="sep" />
+
+          <h2>3) Feedback</h2>
+          <p class="hint">
+            Rate the last generation. We’ll auto-send the stored <code>run_id</code> from the last <code>/goal</code> response.
+          </p>
+
+          <div class="feedbackRow">
+            <div class="stars" id="stars" aria-label="Rating">
+              <!-- stars injected by JS -->
+            </div>
+
+            <label class="checkbox">
+              <input type="checkbox" id="wouldUse" />
+              Would use on stage
+            </label>
+          </div>
+
+          <label class="label" for="notes">Notes (optional)</label>
+          <textarea id="notes" class="textarea" rows="4" placeholder="What worked / didn’t?"></textarea>
+
+          <div class="row">
+            <button id="sendFeedbackBtn" class="btn" disabled>
+              Send feedback
+            </button>
+            <span class="hint" id="feedbackHint">Generate something first.</span>
+          </div>
+
+          <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <span>Open: <code>http://localhost:8000/</code> (redirects to <code>/ui</code>)</span>
+      </footer>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

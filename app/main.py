@@ -22,6 +22,7 @@ DEFAULT_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.7"))
 REQUEST_TIMEOUT_S = float(os.getenv("OLLAMA_TIMEOUT_S", "60"))
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+ALLOWED_TASKS = {"rewrite_premise", "rewrite_persona"}
 
 app = FastAPI(title="ComedyOps", version="0.1.0")
 
@@ -54,6 +55,7 @@ class RewritePersonaResponse(BaseModel):
     model: str
     run_id: str
 
+
 class FeedbackRequest(BaseModel):
     run_id: str = Field(..., min_length=8)
     human_rating: int = Field(..., ge=1, le=5, description="1=bad, 5=great")
@@ -63,6 +65,26 @@ class FeedbackRequest(BaseModel):
 
 class FeedbackResponse(BaseModel):
     status: str
+
+
+class RoutedGoal(BaseModel):
+    task: str = Field(..., description="Target task to execute")
+    premise: str
+    persona: str | None = None
+    prompt_version: str = "v1"
+
+
+class GoalRequest(BaseModel):
+    goal: str = Field(..., min_length=5)
+
+
+class GoalResponse(BaseModel):
+    rewritten: str
+    task: str
+    persona: str | None
+    model: str
+    run_id: str
+
 
 def load_prompt(template_name: str, version: str) -> str:
     """Load a prompt template from disk."""
@@ -170,6 +192,28 @@ def score_joke(text: str) -> int:
         score += 1
 
     return score
+
+def route_goal(user_goal: str) -> RoutedGoal:
+    prompt_template = load_prompt("goal_router", "v1")
+
+    router_prompt = (
+        f"{prompt_template}\n\n"
+        f"User goal:\n{user_goal}\n\n"
+        "Decision:"
+    )
+
+    raw = llm.generate(router_prompt)
+
+    try:
+        data = json.loads(raw)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Invalid router JSON: {e}")
+
+    task = data.get("task")
+    if task not in ALLOWED_TASKS:
+        raise HTTPException(status_code=502, detail=f"Unsupported task: {task}")
+
+    return RoutedGoal(**data)
 
 
 @app.get("/health")
@@ -443,3 +487,42 @@ def submit_feedback(req: FeedbackRequest) -> FeedbackResponse:
     )
 
     return FeedbackResponse(status="ok")
+
+@app.post("/goal", response_model=GoalResponse)
+def execute_goal(req: GoalRequest) -> GoalResponse:
+    routed = route_goal(req.goal)
+
+    if routed.task == "rewrite_premise":
+        result = rewrite_premise(
+            RewritePremiseRequest(
+                premise=routed.premise,
+                prompt_version=routed.prompt_version,
+            )
+        )
+
+        return GoalResponse(
+            rewritten=result.rewritten,
+            task=routed.task,
+            persona=None,
+            model=result.model,
+            run_id=result.run_id,
+        )
+
+    if routed.task == "rewrite_persona":
+        result = rewrite_persona(
+            RewritePersonaRequest(
+                premise=routed.premise,
+                persona=routed.persona or "generic stand-up comic",
+                prompt_version=routed.prompt_version,
+            )
+        )
+
+        return GoalResponse(
+            rewritten=result.rewritten,
+            task=routed.task,
+            persona=routed.persona,
+            model=result.model,
+            run_id=result.run_id,
+        )
+
+    raise HTTPException(status_code=500, detail="Unhandled routed task")
