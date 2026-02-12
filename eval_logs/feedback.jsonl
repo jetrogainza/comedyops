@@ -1,1 +1,7 @@
 {"timestamp": "2026-02-03T09:59:36.482784", "run_id": "8a6f382b-bc09-4016-b3fd-39551085bc09", "human_rating": 1, "would_use_on_stage": false, "notes": "punchline does not make sense with premise."}
+{"timestamp": "2026-02-04T08:20:34.114744", "run_id": "05d7de70-6a8a-4bf8-8ea4-a3d5c259943a", "human_rating": 3, "would_use_on_stage": false, "notes": "premise is not punchy enough."}
+{"timestamp": "2026-02-04T08:21:54.506011", "run_id": "829bdb6c-9e6c-4e96-94dc-996f80e83cf7", "human_rating": 3, "would_use_on_stage": false, "notes": "not funny but makes sense."}
+{"timestamp": "2026-02-04T08:39:59.463227", "run_id": "2bd591bd-504c-41bd-9ce1-0e27a6208b1d", "human_rating": 5, "would_use_on_stage": false, "notes": "funny and real"}
+{"timestamp": "2026-02-12T06:26:53.272498", "run_id": "9d2c180f-3726-4c5d-88cd-658f6345d460", "human_rating": 4, "would_use_on_stage": true, "notes": "HBO is a good idea to explore"}
+{"timestamp": "2026-02-12T06:43:36.044341", "run_id": "8881cd9c-44a3-40c9-905d-ec7a490a088e", "human_rating": 2, "would_use_on_stage": false, "notes": "why the kangoroo?"}
+{"timestamp": "2026-02-12T06:44:44.089696", "run_id": "05489ca5-c446-4995-ba32-1e8d9d248b78", "human_rating": 5, "would_use_on_stage": false, "notes": "good enough for an LLM"}

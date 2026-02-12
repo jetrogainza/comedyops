@@ -26,6 +26,7 @@ RUN pip install --upgrade pip \
 # 8. Copy application code
 COPY app ./app
 COPY prompts ./prompts
+COPY frontend ./frontend
 
 # 9. Expose the API port
 EXPOSE 8000

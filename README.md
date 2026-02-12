@@ -1,14 +1,14 @@
 # ComedyOps 🎭🤖
 
-A hands-on ML engineering project that builds a **local LLM-powered service** for stand-up writing workflows.
+A hands-on ML engineering project that builds an **LLM-powered service** for stand-up writing workflows.
 
-Runs **fully on your machine** using Ollama (no paid cloud, no API keys), and is designed to practise **real ML engineering**, not just notebooks.
+Uses the OpenAI API for model inference and is designed to practise **real ML engineering**, not just notebooks.
 
 ---
 
 ## What it does (current)
 - `POST /rewrite_premise`  
-  Rewrites a comedy premise into a tighter, stage-ready setup using a **local LLM via Ollama**.
+  Rewrites a comedy premise into a tighter, stage-ready setup using an OpenAI model.
 - `GET /health`  
   Basic service health check.
 
@@ -20,7 +20,7 @@ ComedyOps exists to practise **ML Engineering end-to-end**, not model theory:
 
 - API deployment patterns (FastAPI)
 - Containerisation (Docker)
-- Local LLM integration (Ollama)
+- LLM provider integration (OpenAI API)
 - Dependency & environment management (uv + pyproject.toml)
 - CI (GitHub Actions)
 - Testing discipline (pytest)
@@ -35,8 +35,7 @@ This is intentionally **hands-on and slightly painful**, like real work.
 
 - Python 3.11
 - FastAPI + Uvicorn
-- Ollama (local model runtime)
-- httpx (HTTP calls to Ollama)
+- OpenAI API
 - Docker + Docker Compose
 - uv (Python env + dependency manager)
 - pytest (tests)
@@ -52,7 +51,6 @@ Never mix responsibilities between them.
 ### 1️⃣ System tools (installed once)
 - **Homebrew** → installs system-level tools
 - **Docker Desktop** → runs containers
-- **Ollama** → runs local LLMs
 - **uv** → Python environments & dependencies
 
 ⬇️
@@ -137,24 +135,13 @@ docker compose version
 
 ---
 
-### 4️⃣ Install Ollama (local LLM runtime)
+### 4️⃣ Configure OpenAI API key
 
-Install:
-https://ollama.com
-
-Verify:
+Create a `.env` file and set:
 ```bash
-ollama --version
-```
-
-Start Ollama:
-```bash
-ollama serve
-```
-
-Pull a model:
-```bash
-ollama pull llama3.2:3b
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your_api_key_here
+OPENAI_MODEL=gpt-4.1
 ```
 
 ---
@@ -206,7 +193,6 @@ python --version
 ## Run locally (no Docker)
 
 ```bash
-ollama serve
 uvicorn app.main:app --reload
 ```
 
@@ -229,12 +215,30 @@ Or manually:
 ```bash
 docker run --rm \
   -p 8000:8000 \
-  -e LLM_PROVIDER=ollama \
-  -e OLLAMA_HOST=http://host.docker.internal:11434 \
+  -e LLM_PROVIDER=openai \
+  -e OPENAI_API_KEY=$OPENAI_API_KEY \
+  -e OPENAI_MODEL=gpt-4.1 \
   comedyops:latest
 ```
 
 ---
+
+# How to run the front end.
+In a terminal, activate the venv (`source .venv/bin/activate` in case you forgot), and then, either spin up FastAPI via uvicorn (for quick testing) or otherwise complie docker (for  production).
+
+## Using FastAPI
+in the terminal, do `uvicorn app.main:app --reload`. this:
+- Loads app/main.py
+- Creates the FastAPI() app
+- Loads your .env (if you added load_dotenv())
+- Mounts the /ui static frontend
+- Starts the API server on `http://127.0.0.1:8000`
+
+On your browser, go to `http://localhost:8000/` and you will see ComedyOps.
+
+## Using Docker
+If using Docker, first stop uvicorn (if using it) doing `CTRL` + `C`. Then execute `docker compose up --build` and once loaded, go to the same website `http://localhost:8000/`.
+
 
 ## Final reminder
 

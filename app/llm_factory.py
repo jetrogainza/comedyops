@@ -4,15 +4,11 @@ from app.llm import LLM
 
 
 def get_llm() -> LLM:
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    provider = os.getenv("LLM_PROVIDER", "openai").strip().lower()
+    if provider and provider != "openai":
+        raise ValueError(
+            f"Unsupported LLM_PROVIDER '{provider}'. This project now supports only 'openai'."
+        )
 
-    if provider == "ollama":
-        from app.providers.ollama import OllamaLLM
-        return OllamaLLM()
-
-    elif provider == "openai":
-        from app.providers.openai import OpenAILLM
-        return OpenAILLM()
-
-    else:
-        raise ValueError(f"Unknown LLM_PROVIDER: {provider}")
+    from app.providers.openai import OpenAILLM
+    return OpenAILLM()

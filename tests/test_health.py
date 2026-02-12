@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
@@ -22,7 +22,10 @@ def test_rewrite_premise_returns_shape():
         '{"action": "final", "text": "A tighter rewritten premise."}',
     ]
 
-    with patch("app.main.llm.generate", side_effect=fake_outputs):
+    fake_llm = Mock()
+    fake_llm.generate.side_effect = fake_outputs
+
+    with patch("app.main._get_llm", return_value=fake_llm):
         r = client.post(
             "/rewrite_premise",
             json={"premise": "I moved to Australia and everyone calls me mate."},
@@ -30,5 +33,5 @@ def test_rewrite_premise_returns_shape():
 
     assert r.status_code == 200
     body = r.json()
-    assert set(body.keys()) == {"rewritten", "model"}
+    assert set(body.keys()) == {"rewritten", "model", "run_id"}
     assert body["rewritten"] == "A tighter rewritten premise."

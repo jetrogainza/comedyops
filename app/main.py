@@ -3,34 +3,64 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
 
-import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+load_dotenv()
 
 from app.llm_factory import get_llm
 from app.eval_logger import log_generation, log_feedback
 
-llm = get_llm()
 
-# Env vars let us switch model/host without changing code.
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+def _get_llm():
+    """Lazily initialize the configured LLM so app startup doesn't fail on missing env."""
+    try:
+        return get_llm()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "LLM provider is not configured correctly. "
+                "Set OPENAI_API_KEY and keep LLM_PROVIDER=openai."
+            ),
+        ) from e
 
-DEFAULT_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.7"))
-REQUEST_TIMEOUT_S = float(os.getenv("OLLAMA_TIMEOUT_S", "60"))
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 ALLOWED_TASKS = {"rewrite_premise", "rewrite_persona"}
 
+
 app = FastAPI(title="ComedyOps", version="0.1.0")
+
+# Allow local frontends (Vite, simple static servers) to call the API during development.
+# In production you should lock this down to your real domain.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Serve the frontend (static files) at /ui.
+# We avoid mounting at / because your API endpoints live at /goal, /feedback, etc.
+# Mounting at / would capture everything and break the API routes.
+app.mount("/ui", StaticFiles(directory="frontend", html=True), name="frontend")
 
 
 def _reported_model_name() -> str:
-    if LLM_PROVIDER == "openai":
-        return OPENAI_MODEL
-    return OLLAMA_MODEL
+    return OPENAI_MODEL
 
 
 class RewritePremiseRequest(BaseModel):
@@ -96,40 +126,6 @@ def load_prompt(template_name: str, version: str) -> str:
     return prompt_path.read_text(encoding="utf-8")
 
 
-def _ollama_generate(prompt: str, model: str = OLLAMA_MODEL) -> str:
-    """Calls Ollama's HTTP API and returns only the generated text."""
-
-    url = f"{OLLAMA_HOST.rstrip('/')}/api/generate"
-
-    payload: dict[str, Any] = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {"temperature": DEFAULT_TEMPERATURE},
-    }
-
-    try:
-        resp = httpx.post(url, json=payload, timeout=REQUEST_TIMEOUT_S)
-    except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Could not reach Ollama at {OLLAMA_HOST}. Is Ollama running? Error: {e}",
-        )
-
-    if resp.status_code != 200:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Ollama returned HTTP {resp.status_code}: {resp.text}",
-        )
-
-    data = resp.json()
-    text = (data.get("response") or "").strip()
-    if not text:
-        raise HTTPException(status_code=502, detail="Ollama returned an empty response")
-
-    return text
-
-
 # -----------------------------
 # Tool schemas (JSON-based)
 # -----------------------------
@@ -193,6 +189,37 @@ def score_joke(text: str) -> int:
 
     return score
 
+def _extract_json_object(text: str) -> str:
+    """Best-effort extraction of a JSON object from model output."""
+    if not text or not text.strip():
+        raise HTTPException(status_code=502, detail="Router returned empty response")
+
+    stripped = text.strip()
+
+    # Handle fenced code blocks like ```json ... ```
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if len(lines) >= 3:
+            stripped = "\n".join(lines[1:-1]).strip()
+
+    # If still not a bare JSON object, try to slice the first {...}
+    if not (stripped.startswith("{") and stripped.endswith("}")):
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise HTTPException(status_code=502, detail="Router did not return JSON")
+        stripped = stripped[start : end + 1].strip()
+
+    return stripped
+
+def _parse_router_json(raw: str) -> dict:
+    try:
+        return json.loads(_extract_json_object(raw))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Invalid router JSON: {e}")
+
 def route_goal(user_goal: str) -> RoutedGoal:
     prompt_template = load_prompt("goal_router", "v1")
 
@@ -202,18 +229,29 @@ def route_goal(user_goal: str) -> RoutedGoal:
         "Decision:"
     )
 
-    raw = llm.generate(router_prompt)
-
+    raw = _get_llm().generate(router_prompt)
     try:
-        data = json.loads(raw)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Invalid router JSON: {e}")
+        data = _parse_router_json(raw)
+    except HTTPException:
+        # Retry once with a stricter instruction if the model responded with non-JSON.
+        retry_prompt = (
+            f"{router_prompt}\n\n"
+            "Return ONLY the JSON object. No prose, no markdown, no code fences."
+        )
+        raw_retry = _get_llm().generate(retry_prompt)
+        data = _parse_router_json(raw_retry)
 
     task = data.get("task")
     if task not in ALLOWED_TASKS:
         raise HTTPException(status_code=502, detail=f"Unsupported task: {task}")
 
     return RoutedGoal(**data)
+
+
+# Root redirect so http://localhost:8000/ opens the UI.
+@app.get("/")
+def root_redirect():
+    return RedirectResponse(url="/ui")
 
 
 @app.get("/health")
@@ -255,7 +293,7 @@ def rewrite_premise(req: RewritePremiseRequest) -> RewritePremiseResponse:
             "Next action:"
         )
 
-        raw = llm.generate(agent_prompt)
+        raw = _get_llm().generate(agent_prompt)
         action = parse_action(raw)
 
         if action["action"] in {"rewrite", "score"}:
@@ -393,7 +431,7 @@ def rewrite_persona(req: RewritePersonaRequest) -> RewritePersonaResponse:
             "Next action:"
         )
 
-        raw = llm.generate(agent_prompt)
+        raw = _get_llm().generate(agent_prompt)
 
         # Parse JSON action, but with local tool set for this endpoint.
         try:

@@ -7,16 +7,5 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL}
-      OLLAMA_HOST: http://ollama:11434
     volumes:
       - ./eval_logs:/app/eval_logs
-
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-
-volumes:
-  ollama_data:
